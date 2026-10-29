@@ -1,6 +1,9 @@
 name: Generate parish calendar PDF
 
 on:
+  schedule:
+    - cron: '0 9 21 * *'
+      timezone: 'America/Los_Angeles'
   workflow_dispatch:
     inputs:
       month:
@@ -12,6 +15,11 @@ on:
         required: true
         default: 'https://calendar.google.com/calendar/ical/hardin.ws_fm73fv8u5c49ki9kc9infr3jic%40group.calendar.google.com/public/basic.ics'
         type: string
+      send_email:
+        description: 'Also email the PDF using the configured Gmail account and recipients'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -32,6 +40,17 @@ jobs:
       - uses: go-task/setup-task@v1
       - name: Check regression coverage
         run: task test
+      - name: Resolve publication month
+        run: |
+          uv run --locked python - <<'PY'
+          import os
+          from zoneinfo import ZoneInfo
+          from newsletter_calendar import publication_month
+
+          month = publication_month(os.environ.get("CALENDAR_MONTH"), ZoneInfo("America/Los_Angeles"))
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write(f"CALENDAR_MONTH={month:%Y-%m}\n")
+          PY
       - name: Generate the same PDF as local development
         run: task dev
       - uses: actions/upload-artifact@v4
@@ -40,3 +59,10 @@ jobs:
           path: dist/calendar.pdf
           if-no-files-found: error
           retention-days: 30
+      - name: Email the generated PDF
+        if: success() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.send_email))
+        run: uv run --locked python -m newsletter_calendar.delivery --attachment dist/calendar.pdf --month "$CALENDAR_MONTH"
+        env:
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          CALENDAR_EMAIL_RECIPIENTS: ${{ secrets.CALENDAR_EMAIL_RECIPIENTS }}
