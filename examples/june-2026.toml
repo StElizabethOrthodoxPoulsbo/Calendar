@@ -1,0 +1,12 @@
+# Editorial shading from the supplied June publication, not Google Calendar.
+# This optional comparison configuration is not the production default.
+template = "parish"
+title = "St. Elizabeth Orthodox Church"
+address = "26580 Breidablik Pl NW | Poulsbo, WA | 98370"
+logo = "../src/newsletter_calendar/assets/parish-ornament.png"
+footer = "Events: live public Google feed | Lavender: Apostles' Fast from June reference; not inferred from feed"
+
+[[periods]]
+start = 2026-06-08
+end = 2026-06-28
+color = "#e4e4ff"

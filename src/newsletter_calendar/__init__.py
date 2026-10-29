@@ -19,6 +19,8 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
+from .presentation import Presentation, grid_bounds, load_presentation, write_parish_pdf
+
 
 @dataclass(frozen=True)
 class Event:
@@ -149,8 +151,12 @@ def write_pdf(
     start: date,
     zone: ZoneInfo,
     title: str,
+    presentation: Presentation | None = None,
 ) -> None:
     """Write a printable US Letter agenda, automatically spanning pages."""
+    if presentation and presentation.template == "parish":
+        write_parish_pdf(events, output, start, zone, title, presentation)
+        return
     styles = getSampleStyleSheet()
     styles["Heading2"].keepWithNext = True
     styles["BodyText"].spaceAfter = 8
@@ -210,14 +216,24 @@ def main(argv: list[str] | None = None) -> int:
         "--timezone",
         help="IANA display timezone; defaults to the calendar timezone, then UTC.",
     )
-    parser.add_argument("--month", help="Export YYYY-MM instead of next month.")
+    parser.add_argument(
+        "--month", default=os.environ.get("CALENDAR_MONTH") or None,
+        help="Export YYYY-MM instead of next month (or set CALENDAR_MONTH).",
+    )
     parser.add_argument("--output", type=Path, help="Defaults to calendar-YYYY-MM.pdf.")
     parser.add_argument("--title", help="PDF heading; defaults to the calendar name.")
+    parser.add_argument("--config", type=Path, help="Presentation TOML configuration.")
+    parser.add_argument("--template", choices=("agenda", "parish"), help="Override the PDF layout.")
     args = parser.parse_args(argv)
     if not args.calendar_url:
         parser.error("Provide --calendar-url or set GOOGLE_CALENDAR_URL.")
     try:
         # Validate explicit options before accessing the network.
+        presentation = load_presentation(args.config) if args.config else Presentation()
+        if args.template:
+            from dataclasses import replace
+
+            presentation = replace(presentation, template=args.template)
         zone = ZoneInfo(args.timezone) if args.timezone else None
         if args.month:
             selected = datetime.strptime(args.month, "%Y-%m").date()
@@ -228,11 +244,13 @@ def main(argv: list[str] | None = None) -> int:
         zone = zone or ZoneInfo(str(calendar.get("X-WR-TIMEZONE", "UTC")))
         if not args.month:
             start, end = month_bounds(datetime.now(zone).date())
-        events = events_for_month(calendar, start, end, zone)
+        lower, upper = grid_bounds(start) if presentation.template == "parish" else (start, end)
+        events = events_for_month(calendar, lower, upper, zone)
         output = args.output or Path(f"calendar-{start:%Y-%m}.pdf")
-        title = args.title or str(calendar.get("X-WR-CALNAME", "Parish Calendar"))
-        write_pdf(events, output, start, zone, title)
+        title = args.title or presentation.title or str(calendar.get("X-WR-CALNAME", "Parish Calendar"))
+        write_pdf(events, output, start, zone, title, presentation)
     except Exception as error:
         parser.exit(1, f"Could not export calendar: {error}\n")
-    print(f"Wrote {output} ({len(events)} events for {start:%B %Y}).")
+    print(f"Wrote {output} ({len(events)} events for {start:%B %Y}"
+          f"{', including adjacent grid dates' if presentation.template == 'parish' else ''}).")
     return 0

@@ -1,0 +1,42 @@
+name: Generate parish calendar PDF
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month (YYYY-MM); leave empty for next month in America/Los_Angeles'
+        required: false
+        type: string
+      calendar_url:
+        description: 'Public HTTPS iCal URL (never a private/secret address)'
+        required: true
+        default: 'https://calendar.google.com/calendar/ical/hardin.ws_fm73fv8u5c49ki9kc9infr3jic%40group.calendar.google.com/public/basic.ics'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOGLE_CALENDAR_URL: ${{ inputs.calendar_url }}
+      CALENDAR_MONTH: ${{ inputs.month }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+      - uses: go-task/setup-task@v1
+      - name: Check regression coverage
+        run: task test
+      - name: Generate the same PDF as local development
+        run: task dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parish-calendar-pdf
+          path: dist/calendar.pdf
+          if-no-files-found: error
+          retention-days: 30
