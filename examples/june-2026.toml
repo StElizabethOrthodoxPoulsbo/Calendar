@@ -1,12 +1,8 @@
-# Editorial shading from the supplied June publication, not Google Calendar.
-# This optional comparison configuration is not the production default.
+# Same live sources as production; select June with --month 2026-06.
 template = "parish"
 title = "St. Elizabeth Orthodox Church"
 address = "26580 Breidablik Pl NW | Poulsbo, WA | 98370"
 logo = "../src/newsletter_calendar/assets/parish-ornament.png"
-footer = "Events: live public Google feed | Lavender: Apostles' Fast from June reference; not inferred from feed"
-
-[[periods]]
-start = 2026-06-08
-end = 2026-06-28
-color = "#e4e4ff"
+footer = "Events: live public Google Calendar."
+orthocal = true
+fast_background = "#e4e4ff"

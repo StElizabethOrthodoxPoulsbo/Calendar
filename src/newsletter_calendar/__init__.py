@@ -20,6 +20,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from .presentation import Presentation, grid_bounds, load_presentation, write_parish_pdf
+from .liturgical import fetch_liturgical_days, with_liturgical_days
 
 
 @dataclass(frozen=True)
@@ -37,20 +38,24 @@ def month_bounds(today: date) -> tuple[date, date]:
     return start, end
 
 
-def fetch_calendar(url: str) -> Calendar:
-    """Download a public HTTPS iCalendar feed without credentials."""
+def fetch_public_bytes(url: str, limit: int = 20 * 1024 * 1024) -> bytes:
+    """Download a bounded public HTTPS resource without credentials."""
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
         raise ValueError("Use a public HTTPS iCal URL without credentials.")
     request = Request(url, headers={"User-Agent": "newsletter-calendar/0.1"})
-    limit = 20 * 1024 * 1024
     with urlopen(request, timeout=30) as response:
         if urlparse(response.url).scheme != "https":
-            raise ValueError("Calendar feed redirected to a non-HTTPS URL.")
+            raise ValueError("Public feed redirected to a non-HTTPS URL.")
         data = response.read(limit + 1)
     if len(data) > limit:
-        raise ValueError("Calendar feed exceeds the 20 MiB size limit.")
-    calendar = Calendar.from_ical(data)
+        raise ValueError(f"Public feed exceeds the {limit // (1024 * 1024)} MiB size limit.")
+    return data
+
+
+def fetch_calendar(url: str) -> Calendar:
+    """Download a public HTTPS iCalendar feed without credentials."""
+    calendar = Calendar.from_ical(fetch_public_bytes(url))
     if calendar.name != "VCALENDAR":
         raise ValueError("The URL did not return an iCalendar calendar.")
     return calendar
@@ -176,18 +181,29 @@ def write_pdf(
         Paragraph(f"Times shown in {escape(zone.key)}", styles["Normal"]),
         Spacer(1, 12),
     ]
-    previous_day = None
+    if presentation and presentation.footer:
+        story.append(Paragraph(escape(presentation.footer), styles["BodyText"]))
+    grouped = {}
     for event in events:
         day = event.start.date() if isinstance(event.start, datetime) else event.start
         # Events already underway appear under the first day of this month.
         day = max(day, start)
-        if day != previous_day:
-            story.append(Paragraph(day.strftime("%A, %B %d"), styles["Heading2"]))
-            previous_day = day
-        text = f"<b>{escape(event.summary)}</b><br/>{escape(event_label(event))}"
-        if event.location:
-            text += f"<br/>{escape(event.location)}"
-        story.append(Paragraph(text, styles["BodyText"]))
+        grouped.setdefault(day, []).append(event)
+    notes = {}
+    for note in presentation.notes if presentation else ():
+        notes.setdefault(note.day, []).append(note)
+    for day in sorted(grouped.keys() | notes.keys()):
+        story.append(Paragraph(day.strftime("%A, %B %d"), styles["Heading2"]))
+        for note in notes.get(day, []):
+            text = escape(note.text).replace("\n", "<br/>")
+            story.append(Paragraph(
+                f'<font color="{note.color}">{text}</font>', styles["BodyText"],
+            ))
+        for event in grouped.get(day, []):
+            text = f"<b>{escape(event.summary)}</b><br/>{escape(event_label(event))}"
+            if event.location:
+                text += f"<br/>{escape(event.location)}"
+            story.append(Paragraph(text, styles["BodyText"]))
     if not events:
         story.append(Paragraph("No events scheduled this month.", styles["BodyText"]))
 
@@ -246,6 +262,10 @@ def main(argv: list[str] | None = None) -> int:
             start, end = month_bounds(datetime.now(zone).date())
         lower, upper = grid_bounds(start) if presentation.template == "parish" else (start, end)
         events = events_for_month(calendar, lower, upper, zone)
+        if presentation.orthocal:
+            presentation = with_liturgical_days(
+                presentation, fetch_liturgical_days(lower, upper),
+            )
         output = args.output or Path(f"calendar-{start:%Y-%m}.pdf")
         title = args.title or presentation.title or str(calendar.get("X-WR-CALNAME", "Parish Calendar"))
         write_pdf(events, output, start, zone, title, presentation)
