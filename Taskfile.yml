@@ -1,0 +1,15 @@
+version: '3'
+
+tasks:
+  dev:
+    desc: Generate the parish PDF in dist/calendar.pdf from the public feed
+    env:
+      GOOGLE_CALENDAR_URL: '{{default "https://calendar.google.com/calendar/ical/hardin.ws_fm73fv8u5c49ki9kc9infr3jic%40group.calendar.google.com/public/basic.ics" .GOOGLE_CALENDAR_URL}}'
+    cmds:
+      - mkdir -p dist
+      - uv run --locked newsletter-calendar --config config/parish.toml --timezone America/Los_Angeles --output dist/calendar.pdf
+
+  test:
+    desc: Run calendar and PDF regression checks
+    cmds:
+      - uv run --locked python -m unittest discover -s tests -v

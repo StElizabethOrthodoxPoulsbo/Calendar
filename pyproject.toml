@@ -16,6 +16,14 @@ newsletter-calendar = "newsletter_calendar:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+newsletter_calendar = ["assets/*.png"]
+
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pypdf>=6,<7",
+]

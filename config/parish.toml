@@ -1,0 +1,10 @@
+template = "parish"
+title = "St. Elizabeth Orthodox Church"
+address = "26580 Breidablik Pl NW | Poulsbo, WA | 98370"
+logo = "../src/newsletter_calendar/assets/parish-ornament.png"
+footer = "Events: public parish Google Calendar. Fasting guidance is not inferred."
+font_size = 9
+navy = "#002060"
+background = "#efffe8"
+adjacent = "#e4f4ff"
+feast = "#cc0000"
