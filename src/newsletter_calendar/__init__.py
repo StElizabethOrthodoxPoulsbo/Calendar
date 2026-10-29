@@ -68,10 +68,26 @@ def events_for_month(
     """Expand recurrence exceptions and select events overlapping [start, end)."""
     lower = local_datetime(start, zone)
     upper = local_datetime(end, zone)
-    # Floating times use the chosen display zone unless the feed declares its own.
     calendar = deepcopy(calendar)
-    if not calendar.get("X-WR-TIMEZONE"):
-        calendar["X-WR-TIMEZONE"] = zone.key
+    floating_zone = ZoneInfo(str(calendar.pop("X-WR-TIMEZONE", zone.key)))
+
+    def localize_floating(value):
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return value.replace(tzinfo=floating_zone)
+        if isinstance(value, tuple):
+            return tuple(localize_floating(part) for part in value)
+        return value
+
+    # The library's X-WR-TIMEZONE conversion also rewrites UTC recurrences.
+    # Localize only floating values, preserving explicit UTC and TZID semantics.
+    for component in calendar.walk("VEVENT"):
+        for name, value in component.property_items(recursive=False):
+            if name in ("DTSTART", "DTEND", "RECURRENCE-ID", "RDATE", "EXDATE"):
+                for item in getattr(value, "dts", [value]):
+                    localized = localize_floating(item.dt)
+                    if localized != item.dt:
+                        item.dt = localized
+                        item.params["TZID"] = floating_zone.key
     occurrences = recurring_ical_events.of(calendar).between(lower, upper)
     events = []
     for component in occurrences:

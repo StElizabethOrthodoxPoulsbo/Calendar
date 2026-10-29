@@ -97,6 +97,36 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(events[0].start.hour, 0)
         self.assertNotIn("X-WR-TIMEZONE", calendar)
 
+    def test_utc_recurrences_keep_fixed_utc_time_across_dst(self):
+        for timezone in ("America/Los_Angeles", None):
+            with self.subTest(timezone=timezone):
+                calendar = calendar_with(
+                    "UID:utc\nDTSTART:20261025T160000Z\n"
+                    "RRULE:FREQ=WEEKLY;COUNT=4\nSUMMARY:Fixed UTC",
+                    timezone=timezone,
+                )
+                events = events_for_month(
+                    calendar, date(2026, 11, 1), date(2026, 12, 1), ZONE
+                )
+                self.assertEqual([event.start.hour for event in events], [8, 8, 8])
+                self.assertEqual(
+                    [event.start.astimezone(ZoneInfo("UTC")).hour for event in events],
+                    [16, 16, 16],
+                )
+
+    def test_floating_recurrence_exceptions_use_feed_timezone(self):
+        calendar = calendar_with(
+            "UID:floating\nDTSTART:20261025T090000\nRRULE:FREQ=WEEKLY;COUNT=4\n"
+            "EXDATE:20261108T090000\nRDATE:20261110T090000\nSUMMARY:Floating",
+            "UID:floating\nRECURRENCE-ID:20261115T090000\n"
+            "DTSTART:20261115T110000\nSUMMARY:Moved",
+        )
+        events = events_for_month(
+            calendar, date(2026, 11, 1), date(2026, 12, 1), ZoneInfo("UTC")
+        )
+        self.assertEqual([event.start.day for event in events], [1, 10, 15])
+        self.assertEqual([event.start.hour for event in events], [17, 17, 19])
+
     def test_timed_multiday_label(self):
         event = Event(
             datetime(2026, 11, 2, 18, tzinfo=ZONE),
