@@ -62,12 +62,34 @@ or Orthocal fetch fails the run rather than publishing an empty/sample replaceme
 The `parish` layout follows the supplied June 2026 publication: landscape Letter,
 Sunday-first grid with adjacent-month dates, a navy serif masthead, central parish
 ornament, pale green nonfasting days, **purple fasting days**, pale blue
-nonfasting adjacent dates, red high-feast headings, and bold local start times.
+nonfasting adjacent dates, red high-feast headings, and bold local time ranges.
 Adjacent-month fasting dates stay purple, with muted dates/event text.
 It calculates four, five, or six calendar rows as needed.
 Multi-day events appear on every overlapping day with exclusive end dates.
-Crowded cells point to a readable appendix containing their complete event
-details; events are never silently dropped or shrunk below the configured size.
+High-feast and fasting annotations and regular worship services stay on the
+calendar. Liturgies, vespers, vigils, hours, matins, molebens, akathists, and
+compline receive space before optional community entries. Matching all-day
+Google feast/fast notices also remain on the calendar, including lower-ranked
+observances such as All Saints Sunday. An equivalent one-day Google high-feast
+notice without additional details is represented once by the sourced heading.
+A combined event such
+as "Vespers with Orthodox Discussions Following" remains intact as a service;
+"Fellowship after Divine Liturgy" is a community event.
+
+Baptisms, crownings, panakhidas, and other community events appear on the
+calendar when they fit. **Only unplaced community events** go to the appendix:
+calendar entries and liturgical annotations are not copied there. A small
+`N event(s) in appendix` marker is a pointer, not a duplicate event. Multi-day
+community occurrences are either on the calendar or listed once in the
+appendix with their full date range, not on both surfaces. A long optional entry
+does not block a later, smaller community entry that fits.
+
+Calendar rows expand to fit required content at the configured font size.
+If necessary, the month uses additional landscape **calendar pages**, with
+dated calendar continuation cells for exceptionally long services. Worship
+and high-feast/fasting information never spill into the community appendix,
+and content is never silently dropped. Event text retains the configured size.
+Timed events retain their local start/end times and locations.
 
 The original publication uses Garamond and Perpetua. The portable template uses
 built-in Times fonts instead of distributing those fonts. The ornament asset is
@@ -103,16 +125,16 @@ dates). A fasting day is determined from Orthocal's `fast_level` and
 Fish/wine/oil allowances do not turn a fasting day into a nonfasting day.
 Fast-free exceptions are nonfasting; an allowance attached to `No Fast` is not
 mistaken for a fast. Every displayed date gets a fasting label, including the
-season when no allowance applies. Compact grid labels show the allowance when
-present; crowded-day appendices retain both the season and allowance.
+season and allowance when applicable. Both remain on calendar pages; no
+fasting annotations are copied to the community appendix.
 
 High-feast names come from Orthocal's `feasts` (or its `summary_title` for a
 high-ranked day without a feast list). Ranks 6–8 are shown: great feast, major
 feast of the Theotokos, and major feast of the Lord, as defined in Orthocal's
 [rank definitions](https://github.com/brianglass/orthocal-python/blob/main/calendarium/datetools.py).
-Lower-ranked saints/commemorations are not all labeled as high feasts. Parish
-Google Calendar events are preserved separately; with Orthocal enabled, ordinary
-all-day parish events are not automatically colored as high feasts.
+Lower-ranked saints/commemorations are not all labeled as high feasts. Other
+parish Google Calendar entries retain their own titles and times; with Orthocal
+enabled, ordinary all-day parish events are not automatically colored as high feasts.
 
 Purple (`fast_background`) and nonfasting backgrounds are driven by source
 data, taking precedence over editorial `periods`. Red headings identify
