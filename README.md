@@ -28,8 +28,9 @@ task dev
 CALENDAR_MONTH=2026-06 task dev
 ```
 
-Both commands produce `dist/calendar.pdf` using `config/parish.toml` and the
-parish's public Google Calendar. `GOOGLE_CALENDAR_URL` overrides that public
+Both commands produce `dist/calendar.pdf` using `config/parish.toml`, the
+parish's public Google Calendar, and [Orthocal](https://orthocal.info/) fasting
+and high-feast data. `GOOGLE_CALENDAR_URL` overrides the public event
 source. `CALENDAR_MONTH` also works with the CLI. Invalid dates, inaccessible
 feeds, or invalid configuration fail the task; there is no sample-data fallback.
 
@@ -53,15 +54,17 @@ public parish feed used locally; use only a public HTTPS iCal URL.
 The workflow runs `task test` and the identical `task dev` entry point, then
 uploads `dist/calendar.pdf` as **parish-calendar-pdf**, retained for 30 days.
 Download it from the completed run's **Artifacts** section. No repository
-secrets or Google account permissions are required. A failed fetch fails the
-run rather than publishing an empty/sample replacement.
+secrets or Google account permissions are required. A failed Google Calendar
+or Orthocal fetch fails the run rather than publishing an empty/sample replacement.
 
 ## Presentation template
 
 The `parish` layout follows the supplied June 2026 publication: landscape Letter,
 Sunday-first grid with adjacent-month dates, a navy serif masthead, central parish
-ornament, pale green days, pale blue adjacent dates, red all-day headings, and
-bold local start times. It calculates four, five, or six calendar rows as needed.
+ornament, pale green nonfasting days, **purple fasting days**, pale blue
+nonfasting adjacent dates, red high-feast headings, and bold local start times.
+Adjacent-month fasting dates stay purple, with muted dates/event text.
+It calculates four, five, or six calendar rows as needed.
 Multi-day events appear on every overlapping day with exclusive end dates.
 Crowded cells point to a readable appendix containing their complete event
 details; events are never silently dropped or shrunk below the configured size.
@@ -78,13 +81,56 @@ uv run newsletter-calendar --config config/parish.toml \
 
 Configuration paths for `logo` resolve relative to the TOML file. Supported keys:
 `template` (`agenda` or `parish`), `title`, `address`, `logo`, `footer`,
-`font_size` (8–12 points), and `navy`, `background`, `adjacent`, `feast`
-(`#RRGGBB`). CLI `--title` and `--template` override configuration.
+`font_size` (8–12 points for events), `orthocal` (boolean), and `navy`,
+`background`, `adjacent`, `feast`, `fast_background` (`#RRGGBB`).
+Source annotations use 8-point text to keep the grid readable.
+CLI `--title` and `--template` override configuration.
 Without a config/template argument the original portrait agenda remains the
 default; `--template parish` also works without branding.
 
+### Fasting days and high feasts
+
+The parish configuration enables `orthocal = true`. Both `task dev` and Actions
+fetch the documented [Orthocal monthly API](https://orthocal.info/api/docs/)
+using `https://orthocal.info/api/gregorian/YEAR/MONTH/`. This is the **Gregorian
+(New Calendar), Slavic/OCA** convention: the supplied publication places the
+Nativity of St John the Baptist on June 24 and Apostles Peter and Paul on June 29,
+matching this convention rather than the Old Calendar.
+
+The generator fetches each intersecting month once (including adjacent grid
+dates). A fasting day is determined from Orthocal's `fast_level` and
+`fast_abstentions`, not from a fixed June range or whether it is Wednesday/Friday.
+Fish/wine/oil allowances do not turn a fasting day into a nonfasting day.
+Fast-free exceptions are nonfasting; an allowance attached to `No Fast` is not
+mistaken for a fast. Every displayed date gets a fasting label, including the
+season when no allowance applies. Compact grid labels show the allowance when
+present; crowded-day appendices retain both the season and allowance.
+
+High-feast names come from Orthocal's `feasts` (or its `summary_title` for a
+high-ranked day without a feast list). Ranks 6–8 are shown: great feast, major
+feast of the Theotokos, and major feast of the Lord, as defined in Orthocal's
+[rank definitions](https://github.com/brianglass/orthocal-python/blob/main/calendarium/datetools.py).
+Lower-ranked saints/commemorations are not all labeled as high feasts. Parish
+Google Calendar events are preserved separately; with Orthocal enabled, ordinary
+all-day parish events are not automatically colored as high feasts.
+
+Purple (`fast_background`) and nonfasting backgrounds are driven by source
+data, taking precedence over editorial `periods`. Red headings identify
+high feasts. A high feast can still be a fasting day (for example June 24);
+June 29 is nonfasting. Orthocal attribution and the calendar convention are
+printed in the PDF, including when using the agenda layout.
+
+Per [Orthocal's guidance](https://orthocal.info/about/), these fasting indications
+are not an authoritative pastoral rule: **follow parish guidance**. No fasting
+guidance is invented when a source is missing. Timeouts, malformed JSON,
+incomplete months, duplicate dates, and invalid fasting data fail generation
+before the output PDF is replaced. Orthocal requests time out after 30 seconds,
+are limited to 5 MiB each, and require no credentials. Scripture passages,
+saint biographies, and readings are not copied into the PDF.
+
 Optional editorial `periods` shade inclusive date ranges, with later ranges
-taking precedence. `notes` add colored day headings. For example:
+taking precedence when Orthocal is disabled. `notes` add colored parish
+annotations independently of sourced liturgical data. For example:
 
 ```toml
 [[periods]]
@@ -94,14 +140,14 @@ color = "#e4e4ff"
 
 [[notes]]
 day = 2026-06-09
-text = "Wine & Oil"
+text = "Parish picnic"
 color = "#002060"
 ```
 
-These are editorial inputs, **not automatically inferred fasting rules**.
-The production config contains no June dates or events. The optional
-[`examples/june-2026.toml`](examples/june-2026.toml) adds only the Apostles'
-Fast shading from the reference for comparison:
+These are optional editorial inputs, not a substitute for Orthocal fasting data.
+The production config contains no month-specific dates or events. The
+[`examples/june-2026.toml`](examples/june-2026.toml) comparison configuration now
+uses the same two live sources, with no reference-derived fasting mask:
 
 ```sh
 GOOGLE_CALENDAR_URL='https://calendar.google.com/calendar/ical/hardin.ws_fm73fv8u5c49ki9kc9infr3jic%40group.calendar.google.com/public/basic.ics' \
@@ -109,11 +155,10 @@ GOOGLE_CALENDAR_URL='https://calendar.google.com/calendar/ical/hardin.ws_fm73fv8
   --config examples/june-2026.toml --output june-comparison.pdf
 ```
 
-This comparison fetches real events, including adjacent grid dates, and labels
-the editorial shading in its footer. The current public feed differs from the
-printed June publication; choir practice, meal teams, fasting allowances, and
-other publication-only annotations are not invented or copied into event data.
-All-day events are colored headings regardless of whether they are feast days.
+This comparison fetches real parish events and real date-specific liturgical
+information, including adjacent grid dates. The current public event feed
+differs from the printed June publication; choir practice, meal teams, and
+other publication-only parish annotations are not invented or copied into data.
 Neither template includes event descriptions or attachments.
 
 ## Point at a public Google Calendar

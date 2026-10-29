@@ -47,12 +47,14 @@ class PresentationTests(unittest.TestCase):
         self.assertTrue(config.logo.is_file())
         self.assertEqual(config.template, "parish")
         reference = load_presentation(Path("examples/june-2026.toml"))
-        self.assertEqual(reference.periods[0].start, date(2026, 6, 8))
+        self.assertTrue(reference.orthocal)
+        self.assertEqual(reference.periods, ())
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.toml"
             for content in (
                 'template = "unknown"', 'background = "red"', 'font_size = 3',
                 'logo = "missing.png"', 'unknown = true', 'title = 3',
+                'orthocal = "yes"', 'fast_background = "purple"',
                 '[[periods]]\nstart = 2026-06-08\nend = 2026-06-01\ncolor = "#000000"',
                 '[[notes]]\nday = "2026-06-01"\ntext = "No fast"\ncolor = "#000000"',
             ):
@@ -112,7 +114,8 @@ class PresentationTests(unittest.TestCase):
             self.assertIn("END OF EVENT", text)
 
     @patch("newsletter_calendar.fetch_calendar")
-    def test_cli_loads_config_and_fetches_adjacent_grid_events(self, fetch):
+    @patch("newsletter_calendar.fetch_liturgical_days", return_value={})
+    def test_cli_loads_config_and_fetches_adjacent_grid_events(self, liturgical, fetch):
         fetch.return_value = calendar_with(
             "UID:previous\nDTSTART;VALUE=DATE:20260531\nSUMMARY:Previous month",
             "UID:next\nDTSTART;VALUE=DATE:20260704\nSUMMARY:Next month",
@@ -127,6 +130,7 @@ class PresentationTests(unittest.TestCase):
             self.assertIn("Previous month", text)
             self.assertIn("Next month", text)
             self.assertIn("St. Elizabeth Orthodox Church", text)
+            liturgical.assert_called_once_with(date(2026, 5, 31), date(2026, 7, 5))
 
     @patch("newsletter_calendar.fetch_calendar")
     def test_invalid_config_fails_before_network(self, fetch):
@@ -136,7 +140,8 @@ class PresentationTests(unittest.TestCase):
         fetch.assert_not_called()
 
     @patch("newsletter_calendar.fetch_calendar")
-    def test_agenda_override_and_environment_month(self, fetch):
+    @patch("newsletter_calendar.fetch_liturgical_days", return_value={})
+    def test_agenda_override_and_environment_month(self, liturgical, fetch):
         fetch.return_value = calendar_with()
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "calendar.pdf"
@@ -148,6 +153,7 @@ class PresentationTests(unittest.TestCase):
             pdf = PdfReader(output)
             self.assertEqual(tuple(pdf.pages[0].mediabox), (0, 0, 612, 792))
             self.assertIn("June 2026", pdf.pages[0].extract_text())
+            liturgical.assert_called_once_with(date(2026, 6, 1), date(2026, 7, 1))
 
 
 if __name__ == "__main__":

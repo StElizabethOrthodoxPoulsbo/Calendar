@@ -33,6 +33,7 @@ class Note:
     day: date
     text: str
     color: str
+    kind: str = "editorial"
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,8 @@ class Presentation:
     background: str = "#efffe8"
     adjacent: str = "#e4f4ff"
     feast: str = "#cc0000"
+    orthocal: bool = False
+    fast_background: str = "#e4e4ff"
     font_size: float = 9
     periods: tuple[Period, ...] = field(default_factory=tuple)
     notes: tuple[Note, ...] = field(default_factory=tuple)
@@ -66,13 +69,15 @@ def load_presentation(path: Path) -> Presentation:
         raise ValueError(f"Unknown presentation settings: {', '.join(sorted(unknown))}.")
     if data.get("template", "agenda") not in ("agenda", "parish"):
         raise ValueError("template must be 'agenda' or 'parish'.")
+    if type(data.get("orthocal", False)) is not bool:
+        raise ValueError("orthocal must be true or false.")
     for key in ("title", "address", "footer", "logo"):
         if key in data and not isinstance(data[key], str):
             raise ValueError(f"{key} must be a string.")
     size = data.get("font_size", 9)
     if isinstance(size, bool) or not isinstance(size, (int, float)) or not 8 <= size <= 12:
         raise ValueError("font_size must be between 8 and 12 points.")
-    for key in ("navy", "background", "adjacent", "feast"):
+    for key in ("navy", "background", "adjacent", "feast", "fast_background"):
         if key in data:
             _color(data[key])
     if data.get("logo"):
@@ -145,6 +150,9 @@ def write_parish_pdf(
         leading=config.font_size + 1,
     )
     heading = ParagraphStyle("Heading", parent=body, alignment=TA_RIGHT)
+    annotation = ParagraphStyle(
+        "Annotation", parent=heading, fontSize=8, leading=9,
+    )
     overflow: list[tuple[date, list["Event"], list[Note]]] = []
 
     def paragraph(text, style, x, top, available_width):
@@ -189,7 +197,15 @@ def write_parish_pdf(
             for period in config.periods:
                 if period.start <= day <= period.end:
                     fill = period.color
-            canvas.setFillColor(colors.HexColor(config.adjacent if outside else fill))
+            # With sourced liturgical data, even adjacent fasting dates retain
+            # purple. Their muted numbers/text still distinguish the month.
+            sourced = any(note.day == day and note.kind == "fasting" for note in config.notes)
+            background = (
+                config.adjacent
+                if outside and not (sourced and fill == config.fast_background)
+                else fill
+            )
+            canvas.setFillColor(colors.HexColor(background))
             canvas.rect(x, top - cell_height, cell_width, cell_height, stroke=1, fill=1)
             ink = colors.HexColor("#737d82") if outside else colors.black
             canvas.setFillColor(ink)
@@ -200,10 +216,30 @@ def write_parish_pdf(
             notes = [note for note in config.notes if note.day == day]
             remaining_top = top - 19
             available_width = cell_width - 10
+            inline_fasting = False
+            for note in notes:
+                if note.kind != "fasting":
+                    continue
+                label_width = canvas.stringWidth(number, "Times-Bold", 11)
+                item = Paragraph(
+                    f'<font color="{note.color}">{escape(note.text.splitlines()[-1])}</font>',
+                    annotation,
+                )
+                _, h = item.wrap(cell_width - label_width - 15, height)
+                if h <= cell_height - 24:
+                    item.drawOn(canvas, x + label_width + 10, top - 3 - h)
+                    remaining_top = min(remaining_top, top - h - 6)
+                    inline_fasting = True
+                break
             entries = []
             for note in notes:
+                if note.kind == "fasting" and inline_fasting:
+                    continue
+                text = escape(note.text).replace("\n", "<br/>")
+                if note.kind == "high-feast":
+                    text = f"<b>{text.removeprefix('High feast: ')}</b>"
                 entries.append((
-                    f'<font color="{note.color}">{escape(note.text)}</font>', heading
+                    f'<font color="{note.color}">{text}</font>', annotation
                 ))
             for event in day_events:
                 if isinstance(event.start, datetime):
@@ -217,8 +253,9 @@ def write_parish_pdf(
                         text += f"<br/><i>{escape(event.location)}</i>"
                     entries.append((text, body))
                 else:
+                    color = ("#737d82" if outside else "#000000") if sourced else config.feast
                     entries.append((
-                        f'<font color="{config.feast}">{escape(event.summary)}</font>',
+                        f'<font color="{color}">{escape(event.summary)}</font>',
                         heading,
                     ))
             measured = []
@@ -227,18 +264,18 @@ def write_parish_pdf(
                 item = Paragraph(text, style)
                 _, h = item.wrap(available_width, height)
                 measured.append((item, h))
-            total = sum(h + 2 for _, h in measured)
-            available = cell_height - 24
+            total = sum(h + 1 for _, h in measured)
+            available = remaining_top - (top - cell_height + 5)
             crowded = total > available
             if crowded:
                 overflow.append((day, day_events, notes))
                 available -= 12
             for item, h in measured:
-                if h + 2 > available:
+                if h + 1 > available:
                     break
                 item.drawOn(canvas, x + 5, remaining_top - h)
-                remaining_top -= h + 2
-                available -= h + 2
+                remaining_top -= h + 1
+                available -= h + 1
             if crowded:
                 canvas.setFillColor(colors.HexColor(config.navy))
                 canvas.setFont("Times-Italic", 8)
@@ -284,9 +321,15 @@ def write_parish_pdf(
 
         appendix_line(f"<b>{escape(title)} - {start:%B %Y}: full days</b>", body)
         for day, day_events, notes in overflow:
+            if y < 150:
+                canvas.showPage()
+                y = 750
             appendix_line(f"<b>{day:%A, %B %d, %Y}</b>", body)
             for note in notes:
-                appendix_line(escape(note.text), body)
+                text = escape(note.text).replace("\n", "<br/>")
+                if note.kind == "high-feast":
+                    text = f"<b>{text}</b>"
+                appendix_line(f'<font color="{note.color}">{text}</font>', body)
             for event in day_events:
                 text = f"<b>{escape(event.summary)}</b><br/>{escape(event_label(event))}"
                 if event.location:
