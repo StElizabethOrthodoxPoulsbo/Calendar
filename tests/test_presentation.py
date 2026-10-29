@@ -89,7 +89,7 @@ class PresentationTests(unittest.TestCase):
                       Presentation(template="parish"))
             pdf = PdfReader(output)
             self.assertGreater(len(pdf.pages), 2)
-            self.assertIn("Full day: see appendix", pdf.pages[0].extract_text())
+            self.assertIn("event(s) in appendix", pdf.pages[0].extract_text())
             text = "\n".join(page.extract_text() for page in pdf.pages[1:])
             for i in range(35):
                 self.assertIn(f"Unique event {i:03d} <literal> &", text)
@@ -110,7 +110,8 @@ class PresentationTests(unittest.TestCase):
             pdf = PdfReader(output)
             self.assertGreater(len(pdf.pages), 2)
             text = "\n".join(page.extract_text() for page in pdf.pages[1:])
-            self.assertIn("Wine & <Oil>", text)
+            self.assertIn("Wine & <Oil>", pdf.pages[0].extract_text())
+            self.assertNotIn("Wine & <Oil>", text)
             self.assertIn("END OF EVENT", text)
 
     @patch("newsletter_calendar.fetch_calendar")
