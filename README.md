@@ -53,9 +53,74 @@ public parish feed used locally; use only a public HTTPS iCal URL.
 
 The workflow runs `task test` and the identical `task dev` entry point, then
 uploads `dist/calendar.pdf` as **parish-calendar-pdf**, retained for 30 days.
-Download it from the completed run's **Artifacts** section. No repository
-secrets or Google account permissions are required. A failed Google Calendar
+Download it from the completed run's **Artifacts** section. Generation-only
+runs need no repository secrets or Google account permissions. A failed Google Calendar
 or Orthocal fetch fails the run rather than publishing an empty/sample replacement.
+
+### Monthly schedule and Gmail delivery
+
+The workflow also runs on the **21st of every month at 09:00
+America/Los_Angeles**, generating the **following month's** publication
+(December generates January of the next year). It uses GitHub's
+[timezone-aware schedules](https://github.blog/changelog/2026-03-19-github-actions-late-march-2026-updates/),
+so the run stays at 9 a.m. Pacific through daylight saving changes. The selected
+month is resolved once and shared by `task dev` and the email subject/attachment
+name. Both sources must succeed; an empty/sample fallback is never mailed.
+
+**Scheduled runs email automatically after generation and artifact upload
+succeed.** On-demand runs only generate/upload by default. Check **send_email**
+in **Run workflow** to explicitly test delivery to the configured recipients.
+`task dev` itself never sends email. Generation-only manual runs need no Gmail
+secrets.
+
+To enable delivery, the account/repository owner must:
+
+1. Choose a Gmail or Gmail-enabled Google Workspace sending account and enable
+   [2-Step Verification](https://support.google.com/accounts/answer/185839).
+2. Create a dedicated [Google app password](https://myaccount.google.com/apppasswords)
+   for this workflow. Use this app password, **not the account's normal password**.
+   [App passwords may be unavailable](https://support.google.com/accounts/answer/185833)
+   under Workspace/organization policies, Advanced Protection, or security-key-only
+   verification settings. If unavailable, this SMTP integration cannot send until
+   the account/admin permits it or an alternative sender is implemented.
+3. In this repository, open **Settings > Secrets and variables > Actions >
+   New repository secret** and add all three secrets below. Never put their
+   values in YAML, source files, workflow inputs, issues, or logs.
+
+| Secret | Value |
+|---|---|
+| `GMAIL_SENDER` | Full login email address of the sending Google account. |
+| `GMAIL_APP_PASSWORD` | That account's dedicated app password; Google's displayed spaces are accepted. |
+| `CALENDAR_EMAIL_RECIPIENTS` | Comma-separated bare email addresses, e.g. `first@example.com,second@example.com`. No display names or trailing comma. |
+
+4. Ensure GitHub Actions is enabled, merge the workflow onto the default branch,
+   and confirm the three secrets are available to repository workflows. To test,
+   run the workflow manually with a chosen `month` and **send_email** checked.
+   This sends real mail to **all configured recipients**; leave the toggle
+   unchecked for a PDF-only preview.
+
+Delivery uses Python's standard library over certificate-verified TLS to
+`smtp.gmail.com:465`; no Node dependencies or Google API keys are needed. The
+sender authenticates with the app password. Recipients are SMTP envelope
+recipients, not visible To/Cc/Bcc lists, and are not printed in logs.
+The exact generated `dist/calendar.pdf` is attached as
+`parish-calendar-YYYY-MM.pdf` with the selected month in the subject.
+
+Missing/invalid configuration, authentication errors, refused recipients, and
+SMTP/network failures fail the run explicitly. The PDF artifact remains
+downloadable if generation/upload succeeded but email failed. SMTP acceptance
+is not an inbox-delivery guarantee. **There are no automatic email retries**:
+partial delivery or a lost SMTP acknowledgment can leave delivery uncertain.
+Check delivery before rerunning a scheduled job or opting into another manual
+send, since either can duplicate mail. Gmail/account sending limits still apply.
+Changing the Google account password revokes its app passwords; update the
+repository secret when rotating credentials.
+
+Schedules only run from the default branch. GitHub may delay/drop scheduled
+runs under load, and public-repository schedules can be disabled after 60 days
+without repository activity; monitor the Actions page rather than treating this
+as a guaranteed-time mail service. No live secrets or account settings are
+configured by this change.
 
 ## Presentation template
 

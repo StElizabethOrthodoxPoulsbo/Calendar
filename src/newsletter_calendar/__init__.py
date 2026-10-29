@@ -38,6 +38,22 @@ def month_bounds(today: date) -> tuple[date, date]:
     return start, end
 
 
+def parse_month(value: str) -> date:
+    """Validate an explicit publication month before using it in output metadata."""
+    try:
+        selected = datetime.strptime(value, "%Y-%m").date()
+    except ValueError:
+        raise ValueError("--month must use YYYY-MM format.") from None
+    if selected.strftime("%Y-%m") != value:
+        raise ValueError("--month must use YYYY-MM format.")
+    return selected
+
+
+def publication_month(value: str | None, zone: ZoneInfo) -> date:
+    """Resolve the publication month once for generation and delivery."""
+    return parse_month(value) if value else month_bounds(datetime.now(zone).date())[0]
+
+
 def fetch_public_bytes(url: str, limit: int = 20 * 1024 * 1024) -> bytes:
     """Download a bounded public HTTPS resource without credentials."""
     parsed = urlparse(url)
@@ -252,14 +268,13 @@ def main(argv: list[str] | None = None) -> int:
             presentation = replace(presentation, template=args.template)
         zone = ZoneInfo(args.timezone) if args.timezone else None
         if args.month:
-            selected = datetime.strptime(args.month, "%Y-%m").date()
-            if selected.strftime("%Y-%m") != args.month:
-                raise ValueError("--month must use YYYY-MM format.")
+            selected = parse_month(args.month)
             start, end = selected, month_bounds(selected)[0]
         calendar = fetch_calendar(args.calendar_url)
         zone = zone or ZoneInfo(str(calendar.get("X-WR-TIMEZONE", "UTC")))
         if not args.month:
-            start, end = month_bounds(datetime.now(zone).date())
+            start = publication_month(None, zone)
+            end = month_bounds(start)[0]
         lower, upper = grid_bounds(start) if presentation.template == "parish" else (start, end)
         events = events_for_month(calendar, lower, upper, zone)
         if presentation.orthocal:
